@@ -34,6 +34,7 @@
 #define _XOPEN_SOURCE 500
 #endif
 
+#include "aes-crypt.h"
 #include <linux/limits.h>
 #include <stdlib.h>
 #include <fuse.h>
@@ -49,12 +50,13 @@
 #endif 
 
 typedef struct {
-	char * mountDir;
+	char* mountDir;
+	char* key;
 } data;
 
 static void fullpath(char fpath[PATH_MAX], const char * path)
 {
-	data * userData = (struct data *) (fuse_get_context()->private_data);
+	data * userData = (data *) (fuse_get_context()->private_data);
 	strcpy(fpath, userData->mountDir);
 	strncat(fpath, path, PATH_MAX);
 	
@@ -351,6 +353,7 @@ static int xmp_create(const char* path, mode_t mode, struct fuse_file_info* fi) 
 
     (void) fi;
 
+    FILE * ef;
     int res;
     char fpath[PATH_MAX];
     fullpath(fpath, path);
@@ -358,7 +361,12 @@ static int xmp_create(const char* path, mode_t mode, struct fuse_file_info* fi) 
     res = creat(fpath, mode);
     if(res == -1)
 	return -errno;
+  
+    ef = fdopen(res, "w"); 
+    data * userData = (data *) (fuse_get_context()->private_data);
+    do_crypt(res, ef, 1, userData->key);
 
+    fclose(ef);
     close(res);
 
     return 0;
@@ -471,6 +479,7 @@ int main(int argc, char *argv[])
 	if(argc != 4)
 		return -1;
 	input->mountDir = realpath(argv[2], NULL);
+	input->key = argv[1];
 	printf("Path is %s\n", input->mountDir);
 	
 	//return 0;
