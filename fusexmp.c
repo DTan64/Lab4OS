@@ -364,7 +364,7 @@ static int xmp_create(const char* path, mode_t mode, struct fuse_file_info* fi) 
   
     ef = fdopen(res, "w"); 
     data * userData = (data *) (fuse_get_context()->private_data);
-    do_crypt(res, ef, 1, userData->key);
+    do_crypt(ef, ef, 1, userData->key);
 
     fclose(ef);
     close(res);
