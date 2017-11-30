@@ -44,6 +44,7 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
+#include <linux/xattr.h>
 #include <sys/time.h>
 #ifdef HAVE_SETXATTR
 #include <sys/xattr.h>
@@ -299,6 +300,9 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 {
 	int fd;
 	int res;
+	char flag[20];
+	FILE* ef;
+
 	char fpath[PATH_MAX];
         fullpath(fpath, path);
 
@@ -306,12 +310,23 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 	fd = open(fpath, O_RDONLY);
 	if (fd == -1)
 		return -errno;
+	
+	data * userData = (data *) (fuse_get_context()->private_data);
+	ef = fopen(fpath, "r");
+	lgetxattr(fpath, "user.encrypted", flag, 20);
+	do_crypt(ef, ef, 0, userData->key);	
+	/*if(flag[0] == 't')
+	{
+		do_crypt(ef, ef, 0, userData->key);
+	}*/	
+	
 
 	res = pread(fd, buf, size, offset);
 	if (res == -1)
 		res = -errno;
 
 	close(fd);
+	fclose(ef);
 	return res;
 }
 
@@ -320,6 +335,8 @@ static int xmp_write(const char *path, const char *buf, size_t size,
 {
 	int fd;
 	int res;
+	FILE* ef;
+	char flag[20];
 	char fpath[PATH_MAX];
         fullpath(fpath, path);
 
@@ -328,11 +345,20 @@ static int xmp_write(const char *path, const char *buf, size_t size,
 	if (fd == -1)
 		return -errno;
 
+	
+	data * userData = (data *) (fuse_get_context()->private_data);
+        ef = fopen(fpath, "w");
+        lgetxattr(fpath, "user.encrypted", flag, 20);
+	do_crypt(ef, ef, 1, userData->key);
+
+
+
 	res = pwrite(fd, buf, size, offset);
 	if (res == -1)
 		res = -errno;
 
 	close(fd);
+	fclose(ef);
 	return res;
 }
 
@@ -362,10 +388,11 @@ static int xmp_create(const char* path, mode_t mode, struct fuse_file_info* fi) 
     if(res == -1)
 	return -errno;
   
-    ef = fdopen(res, "w"); 
+    ef = fopen(fpath, "a+"); 
     data * userData = (data *) (fuse_get_context()->private_data);
     do_crypt(ef, ef, 1, userData->key);
-
+    lsetxattr(fpath, "user.encrypted", "true", strlen("true"), 1);
+    printf("res: %i\n", res);
     fclose(ef);
     close(res);
 
@@ -473,7 +500,6 @@ static struct fuse_operations xmp_oper = {
 int main(int argc, char *argv[])
 {
 	umask(0);
-	char* mirrorDir;
 	data* input;
 	input = malloc(sizeof(data));
 	if(argc != 4)
