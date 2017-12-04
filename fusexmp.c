@@ -411,7 +411,6 @@ static int xmp_create(const char* path, mode_t mode, struct fuse_file_info* fi) 
 
     (void) fi;
 
-    FILE * ef;
     int res;
     char fpath[PATH_MAX];
     fullpath(fpath, path);
@@ -419,13 +418,9 @@ static int xmp_create(const char* path, mode_t mode, struct fuse_file_info* fi) 
     res = creat(fpath, mode);
     if(res == -1)
 	return -errno;
-  
-    ef = fopen(fpath, "a+"); 
-    data * userData = (data *) (fuse_get_context()->private_data);
-    do_crypt(ef, ef, 1, userData->key);
+
     lsetxattr(fpath, "user.encrypted", "true", strlen("true"), 1);
     printf("res: %i\n", res);
-    fclose(ef);
     close(res);
 
     return 0;
