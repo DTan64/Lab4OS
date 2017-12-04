@@ -302,6 +302,10 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 	int res;
 	char flag[20];
 	FILE* ef;
+	FILE* tmp;
+	int returnValue;
+	int tmp2;
+
 
 	char fpath[PATH_MAX];
         fullpath(fpath, path);
@@ -312,21 +316,32 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 		return -errno;
 	
 	data * userData = (data *) (fuse_get_context()->private_data);
-	ef = fopen(fpath, "r");
-	lgetxattr(fpath, "user.encrypted", flag, 20);
-	do_crypt(ef, ef, 0, userData->key);	
-	/*if(flag[0] == 't')
-	{
-		do_crypt(ef, ef, 0, userData->key);
-	}*/	
+	ef = fopen(fpath, "rb+");
+	tmp = tmpfile();
+	returnValue = lgetxattr(fpath, "user.encrypted", flag, 20);
 	
+	if(returnValue >= 0)
+	{
+		fseek(ef, 0, SEEK_SET);
+		do_crypt(ef, tmp, 0, userData->key);
+		fseek(tmp, 0, SEEK_END);
+		tmp2 = ftell(tmp);
+		fseek(tmp, 0, SEEK_SET);
+		res = fread(buf, 1, tmp2, tmp);
+		if (res == -1)
+                        res = -errno;
+	}
 
-	res = pread(fd, buf, size, offset);
-	if (res == -1)
-		res = -errno;
+	else
+	{
+		res = pread(fd, buf, size, offset);
+        	if (res == -1)
+                	res = -errno;
+	}
 
 	close(fd);
 	fclose(ef);
+	fclose(tmp);
 	return res;
 }
 
@@ -336,10 +351,11 @@ static int xmp_write(const char *path, const char *buf, size_t size,
 	int fd;
 	int res;
 	FILE* ef;
-	char flag[20];
+	FILE* tmp;
 	char fpath[PATH_MAX];
         fullpath(fpath, path);
-
+	int returnValue;
+	
 	(void) fi;
 	fd = open(fpath, O_WRONLY);
 	if (fd == -1)
@@ -347,18 +363,34 @@ static int xmp_write(const char *path, const char *buf, size_t size,
 
 	
 	data * userData = (data *) (fuse_get_context()->private_data);
-        ef = fopen(fpath, "w");
-        lgetxattr(fpath, "user.encrypted", flag, 20);
-	do_crypt(ef, ef, 1, userData->key);
+        ef = fopen(fpath, "rb+");
+	tmp = tmpfile();
+        returnValue = getxattr(fpath, "user.encrypted", NULL, 0);
+	if(returnValue >=0) 
+	{
+		
+		fseek(ef, 0, SEEK_SET);
+		do_crypt(ef, tmp, 0, userData->key);
+		fseek(ef, 0, SEEK_SET);
+		res = fwrite(buf, 1, size, tmp);
+		if (res == -1)
+                        res = -errno;
+		fseek(tmp, 0, SEEK_SET);
+		do_crypt(tmp, ef, 1, userData->key);
+	}
+	else 
+	{
+		res = pwrite(fd, buf, size, offset);
+        	if (res == -1)
+                	res = -errno;
+	}
 
 
 
-	res = pwrite(fd, buf, size, offset);
-	if (res == -1)
-		res = -errno;
 
 	close(fd);
 	fclose(ef);
+	fclose(tmp);
 	return res;
 }
 
